@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     google_api_key: str | None = None
+    auth_secret_key: str | None = None
+    auth_token_expire_minutes: int = 60
     llm_max_tokens: int = 4096
     llm_timeout_seconds: int = 120
     llm_max_retries: int = 3

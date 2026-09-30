@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react'
 import { UserPlus } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import AuthScreen from './components/AuthScreen'
 import DisclaimerBanner from './components/DisclaimerBanner'
 import Sidebar from './components/Sidebar'
 import Timeline from './components/Timeline'
 import UploadDropzone from './components/UploadDropzone'
 import ProcessingQueue from './components/ProcessingQueue'
 import { errorMessage } from './lib/api'
-import { isActive, usePatients, useRecords } from './hooks/queries'
+import { isActive, useCurrentUser, usePatients, useRecords } from './hooks/queries'
 
 export default function App() {
+  const [token, setToken] = useState(() => sessionStorage.getItem('accessToken') ?? '')
+  if (!token) return <AuthScreen onAuthenticated={() => setToken(sessionStorage.getItem('accessToken') ?? '')} />
+  return <AuthenticatedApp key={token} onLogout={() => setToken('')} />
+}
+
+function AuthenticatedApp({ onLogout }) {
+  const queryClient = useQueryClient()
   const [view, setView] = useState('timeline')
   const [storedId, setStoredId] = useState(() => localStorage.getItem('patientId') ?? '')
+  const currentUser = useCurrentUser()
   const patients = usePatients()
 
   const patient = patients.data?.find((p) => p.id === storedId)
@@ -21,6 +31,24 @@ export default function App() {
 
   const records = useRecords(patient?.id)
   const activeCount = records.data?.filter(isActive).length ?? 0
+  const isClinician = currentUser.data?.role === 'clinician'
+  const logout = () => {
+    sessionStorage.removeItem('accessToken')
+    localStorage.removeItem('patientId')
+    queryClient.clear()
+    onLogout()
+  }
+
+  if (currentUser.isError) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-paper px-4">
+        <div className="max-w-md rounded-lg border border-line bg-white p-6 text-center">
+          <p role="alert" className="text-sm text-red-700">{errorMessage(currentUser.error)}</p>
+          <button onClick={logout} className="mt-4 rounded bg-brand px-4 py-2 text-sm font-medium text-white">Sign in again</button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen flex-col">
@@ -29,7 +57,7 @@ export default function App() {
         <Sidebar
           view={view} setView={setView}
           patients={patients.data ?? []} patientId={patient?.id ?? ''} onSelectPatient={selectPatient}
-          activeCount={activeCount}
+          activeCount={activeCount} currentUser={currentUser.data} onLogout={logout}
         />
         <main className="min-w-0 flex-1 px-4 py-6 md:h-full md:overflow-y-auto md:px-10 md:py-8">
           <div className="mx-auto max-w-3xl">
@@ -44,7 +72,11 @@ export default function App() {
                   {patients.isLoading ? 'Loading…' : 'Add a patient to get started'}
                 </h1>
                 {!patients.isLoading && (
-                  <p className="mt-1 text-sm text-ink/70">Use “New patient” in the sidebar, then upload their records.</p>
+                  <p className="mt-1 text-sm text-ink/70">
+                    {isClinician
+                      ? 'No patient profiles have been shared with this clinician account.'
+                      : 'Use “New patient” in the sidebar, then upload their records.'}
+                  </p>
                 )}
               </div>
             ) : (
@@ -63,7 +95,7 @@ export default function App() {
                   />
                 ) : (
                   <div className="space-y-8">
-                    <UploadDropzone patientId={patient.id} />
+                    {!isClinician && <UploadDropzone patientId={patient.id} />}
                     <ProcessingQueue patientId={patient.id} records={records.data} isLoading={records.isLoading} />
                   </div>
                 )}

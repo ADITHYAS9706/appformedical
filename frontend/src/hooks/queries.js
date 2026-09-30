@@ -8,6 +8,7 @@ export const isActive = (r) => r.status === 'pending' || r.status === 'processin
 const PAGE_SIZE = 25
 
 export const usePatients = () => useQuery({ queryKey: ['patients'], queryFn: api.getPatients })
+export const useCurrentUser = () => useQuery({ queryKey: ['currentUser'], queryFn: api.getCurrentUser })
 
 export function useCreatePatient() {
   const qc = useQueryClient()

@@ -20,6 +20,12 @@ class Patient(SQLModel, table=True):
     last_name: str = Field(max_length=100, index=True)
     date_of_birth: date | None = Field(default=None)
     mrn: str | None = Field(default=None, max_length=64, unique=True, index=True)
+    owner_user_id: UUID | None = Field(
+        default=None,
+        foreign_key="users.id",
+        index=True,
+        ondelete="SET NULL",
+    )
     created_at: datetime = Field(
         default_factory=utcnow, sa_type=DateTime(timezone=True), nullable=False
     )

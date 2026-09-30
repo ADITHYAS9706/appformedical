@@ -6,7 +6,12 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlmodel import asc, col, desc, func, or_, select
 
-from app.api.deps import SessionDep
+from app.api.deps import (
+    CurrentUserDep,
+    SessionDep,
+    get_accessible_patient_ids,
+    require_patient_access,
+)
 from app.models.base import utcnow
 from app.models.enums import EventType
 from app.models.event import MedicalEvent
@@ -38,6 +43,7 @@ async def _get_event_or_404(session: SessionDep, event_id: UUID) -> MedicalEvent
 @router.get("", response_model=EventPage)
 async def list_events(
     session: SessionDep,
+    user: CurrentUserDep,
     patient_id: UUID | None = None,
     record_id: UUID | None = None,
     event_type: Annotated[list[EventType] | None, Query()] = None,
@@ -55,10 +61,16 @@ async def list_events(
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "date_from must be <= date_to.")
 
-    conditions = []
+    accessible_ids = await get_accessible_patient_ids(session, user)
+    conditions = [col(MedicalEvent.patient_id).in_(accessible_ids)]
     if patient_id:
+        await require_patient_access(session, user, patient_id)
         conditions.append(col(MedicalEvent.patient_id) == patient_id)
     if record_id:
+        record = await session.get(MedicalRecord, record_id)
+        if record is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found.")
+        await require_patient_access(session, user, record.patient_id)
         conditions.append(col(MedicalEvent.record_id) == record_id)
     if event_type:
         conditions.append(col(MedicalEvent.event_type).in_(event_type))
@@ -105,9 +117,8 @@ async def list_events(
 
 
 @router.post("", response_model=EventRead, status_code=status.HTTP_201_CREATED)
-async def create_event(payload: EventCreate, session: SessionDep):
-    if await session.get(Patient, payload.patient_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Patient not found.")
+async def create_event(payload: EventCreate, session: SessionDep, user: CurrentUserDep):
+    await require_patient_access(session, user, payload.patient_id, write=True)
     if payload.record_id:
         record = await session.get(MedicalRecord, payload.record_id)
         if record is None or record.patient_id != payload.patient_id:
@@ -122,13 +133,21 @@ async def create_event(payload: EventCreate, session: SessionDep):
 
 
 @router.get("/{event_id}", response_model=EventRead)
-async def get_event(event_id: UUID, session: SessionDep):
-    return await _get_event_or_404(session, event_id)
+async def get_event(event_id: UUID, session: SessionDep, user: CurrentUserDep):
+    event = await _get_event_or_404(session, event_id)
+    await require_patient_access(session, user, event.patient_id)
+    return event
 
 
 @router.patch("/{event_id}", response_model=EventRead)
-async def update_event(event_id: UUID, payload: EventUpdate, session: SessionDep):
+async def update_event(
+    event_id: UUID,
+    payload: EventUpdate,
+    session: SessionDep,
+    user: CurrentUserDep,
+):
     event = await _get_event_or_404(session, event_id)
+    await require_patient_access(session, user, event.patient_id, write=True)
     data = {
         k: v
         for k, v in payload.model_dump(exclude_unset=True).items()
@@ -142,8 +161,9 @@ async def update_event(event_id: UUID, payload: EventUpdate, session: SessionDep
 
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_event(event_id: UUID, session: SessionDep):
+async def delete_event(event_id: UUID, session: SessionDep, user: CurrentUserDep):
     event = await _get_event_or_404(session, event_id)
+    await require_patient_access(session, user, event.patient_id, write=True)
     await session.delete(event)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

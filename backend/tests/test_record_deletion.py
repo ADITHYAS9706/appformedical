@@ -6,14 +6,15 @@ from unittest.mock import patch
 
 import app.models
 import app.api.routes.records as records_routes
-from app.api.deps import get_session
+from app.api.deps import get_current_user, get_session
 from app.api.routes.records import delete_record
 from app.core.config import settings
 from app.main import app
-from app.models.enums import EventType, ProcessingStatus
+from app.models.enums import EventType, ProcessingStatus, UserRole
 from app.models.event import MedicalEvent
 from app.models.patient import Patient
 from app.models.record import MedicalRecord
+from app.models.user import AppUser
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -41,7 +42,8 @@ class TestRecordDeletion(unittest.IsolatedAsyncioTestCase):
         self.temp_dir.cleanup()
 
     async def test_delete_removes_failed_record_file_and_events_only(self):
-        patient = Patient(first_name="Test", last_name="Patient")
+        user = AppUser(email="caregiver@example.test", password_hash="not-used", role=UserRole.CAREGIVER)
+        patient = Patient(first_name="Test", last_name="Patient", owner_user_id=user.id)
         target_path = self.root / "failed-upload.jpg"
         sibling_path = self.root / "other-upload.jpg"
         target_path.write_bytes(b"target")
@@ -79,10 +81,10 @@ class TestRecordDeletion(unittest.IsolatedAsyncioTestCase):
         )
 
         async with self.session_factory() as session:
-            session.add_all([patient, target, sibling, target_event, sibling_event])
+            session.add_all([user, patient, target, sibling, target_event, sibling_event])
             await session.commit()
 
-            response = await delete_record(target.id, session)
+            response = await delete_record(target.id, session, user)
 
             self.assertEqual(response.status_code, 204)
             self.assertIsNone(await session.get(MedicalRecord, target.id))
@@ -93,19 +95,20 @@ class TestRecordDeletion(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(sibling_path.exists())
             self.assertIsNotNone(await session.get(Patient, patient.id))
 
-            await delete_record(sibling.id, session)
+            await delete_record(sibling.id, session, user)
             self.assertIsNone(await session.get(MedicalRecord, sibling.id))
             self.assertFalse(sibling_path.exists())
             self.assertEqual((await session.exec(select(MedicalEvent))).all(), [])
 
             with self.assertRaises(HTTPException) as error:
-                await delete_record(target.id, session)
+                await delete_record(target.id, session, user)
             self.assertEqual(error.exception.status_code, 404)
 
     async def test_upload_process_and_delete_lifecycle(self):
-        patient = Patient(first_name="Test", last_name="Timeline")
+        user = AppUser(email="owner@example.test", password_hash="not-used", role=UserRole.CAREGIVER)
+        patient = Patient(first_name="Test", last_name="Timeline", owner_user_id=user.id)
         async with self.session_factory() as session:
-            session.add(patient)
+            session.add_all([user, patient])
             await session.commit()
 
         original_upload_dir = settings.upload_dir
@@ -132,6 +135,10 @@ class TestRecordDeletion(unittest.IsolatedAsyncioTestCase):
                 await session.commit()
 
         app.dependency_overrides[get_session] = override_session
+        async def override_current_user():
+            return user
+
+        app.dependency_overrides[get_current_user] = override_current_user
         try:
             with patch.object(records_routes, "process_record", process_without_llm):
                 async with AsyncClient(

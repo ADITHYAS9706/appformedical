@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -26,3 +26,22 @@ async def init_db() -> None:
             # Serialize schema creation across uvicorn workers / replicas starting together
             await conn.execute(text("SELECT pg_advisory_xact_lock(72656311)"))
         await conn.run_sync(SQLModel.metadata.create_all)
+        patient_columns = await conn.run_sync(
+            lambda sync_conn: {
+                column["name"]
+                for column in inspect(sync_conn).get_columns("patients")
+            }
+        )
+        if "owner_user_id" not in patient_columns:
+            await conn.execute(
+                text(
+                    "ALTER TABLE patients ADD COLUMN owner_user_id UUID "
+                    "REFERENCES users(id) ON DELETE SET NULL"
+                )
+            )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_patients_owner_user_id "
+                "ON patients (owner_user_id)"
+            )
+        )

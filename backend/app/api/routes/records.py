@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query
 from sqlalchemy import delete
 from sqlmodel import col, select
 
-from app.api.deps import SessionDep
+from app.api.deps import CurrentUserDep, SessionDep, get_accessible_patient_ids, require_patient_access
 from app.core.config import settings
 from app.models.event import MedicalEvent
 from app.models.patient import Patient
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 async def upload_records(
     background_tasks: BackgroundTasks,
     session: SessionDep,
+    user: CurrentUserDep,
     patient_id: Annotated[UUID, Form()],
     files: Annotated[list[UploadFile], File(description="One or more PDF/image files")],
 ):
@@ -41,8 +42,7 @@ async def upload_records(
             status.HTTP_400_BAD_REQUEST,
             f"Too many files (max {settings.max_files_per_upload}).",
         )
-    if await session.get(Patient, patient_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Patient not found.")
+    await require_patient_access(session, user, patient_id, write=True)
 
     stored: list[StoredFile] = []
     records: list[MedicalRecord] = []
@@ -74,30 +74,39 @@ async def upload_records(
 @router.get("", response_model=list[RecordRead])
 async def list_records(
     session: SessionDep,
+    user: CurrentUserDep,
     patient_id: UUID | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    stmt = select(MedicalRecord)
+    accessible_ids = await get_accessible_patient_ids(session, user)
+    stmt = select(MedicalRecord).where(col(MedicalRecord.patient_id).in_(accessible_ids))
     if patient_id:
+        await require_patient_access(session, user, patient_id)
         stmt = stmt.where(col(MedicalRecord.patient_id) == patient_id)
     stmt = stmt.order_by(col(MedicalRecord.uploaded_at).desc()).limit(limit).offset(offset)
     return (await session.exec(stmt)).all()
 
 
 @router.get("/{record_id}", response_model=RecordRead)
-async def get_record(record_id: UUID, session: SessionDep):
+async def get_record(record_id: UUID, session: SessionDep, user: CurrentUserDep):
     record = await session.get(MedicalRecord, record_id)
     if record is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found.")
+    await require_patient_access(session, user, record.patient_id)
     return record
 
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_record(record_id: UUID, session: SessionDep) -> Response:
+async def delete_record(
+    record_id: UUID,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> Response:
     record = await session.get(MedicalRecord, record_id)
     if record is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found.")
+    await require_patient_access(session, user, record.patient_id, write=True)
 
     storage_path = Path(record.storage_path)
     await session.exec(delete(MedicalEvent).where(MedicalEvent.record_id == record_id))

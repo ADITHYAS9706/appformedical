@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 from sqlmodel import col, desc, func, select
 
-from app.api.deps import SessionDep
+from app.api.deps import CurrentUserDep, SessionDep, require_patient_access
 from app.models.event import MedicalEvent
 from app.models.patient import Patient
 from app.schemas.summary import SummaryPoint, SummaryRead
@@ -18,13 +18,13 @@ router = APIRouter(prefix="/patients", tags=["summary"])
 async def get_patient_summary(
     patient_id: UUID,
     session: SessionDep,
+    user: CurrentUserDep,
     date_from: date | None = None,
     date_to: date | None = None,
 ):
     """Concise AI summary of the events in the date range. Restates documented events
     only (no diagnosis, advice or health-trend judgments). Cached by content."""
-    if await session.get(Patient, patient_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Patient not found.")
+    await require_patient_access(session, user, patient_id)
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "date_from must be <= date_to.")
 

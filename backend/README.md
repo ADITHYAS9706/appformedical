@@ -6,12 +6,29 @@ FastAPI + SQLModel (async) + PostgreSQL.
 OCR needs the Tesseract binary: `sudo apt install tesseract-ocr` (or `brew install tesseract`).
 ```bash
 cp .env.example .env   # set ANTHROPIC_API_KEY (or OPENAI_API_KEY + LLM_PROVIDER=openai, LLM_MODEL=gpt-4o)
+# Set AUTH_SECRET_KEY to a random value before using authenticated API routes.
+# Generate one with: python -c "import secrets; print(secrets.token_urlsafe(48))"
 docker compose up -d db
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 Docs: http://localhost:8000/docs
+
+## Accounts and access
+New public registrations may select Patient or Caregiver; Clinician accounts must be provisioned
+through a trusted operator. Create the first caregiver with
+`python -m app.bootstrap_owner caregiver@example.com`; the command prompts for a password
+without echoing it. For a known single-owner legacy dataset only, add
+`--claim-existing-profiles` to assign all unowned profiles to that caregiver. Otherwise,
+existing profiles remain inaccessible until explicitly assigned.
+Use `POST /api/auth/register`, then `POST /api/auth/login`; pass the returned bearer token in
+the `Authorization` header. Patients and caregivers can grant a registered clinician access
+through `POST /api/patients/{patient_id}/clinician-grants` and revoke it with DELETE on the
+returned grant ID. Grants may have an expiry. Clinicians have read-only access to granted profiles.
+
+For local use, generate a 48-byte signing secret and set `AUTH_SECRET_KEY` in `backend/.env`.
+For Docker Compose, set `AUTH_SECRET_KEY` in the root `.env`; startup requires this secret.
 
 ## Try it
 ```bash

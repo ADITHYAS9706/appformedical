@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, History, Loader2, UploadCloud, UserPlus } from 'lucide-react'
+import { Activity, FileText, History, Loader2, LogOut, UploadCloud, UserPlus } from 'lucide-react'
 import { errorMessage } from '../lib/api'
 import { useCreatePatient } from '../hooks/queries'
 
@@ -28,11 +28,12 @@ function NewPatientForm({ onCreated }) {
   )
 }
 
-export default function Sidebar({ view, setView, patients, patientId, onSelectPatient, activeCount }) {
+export default function Sidebar({ view, setView, patients, patientId, onSelectPatient, activeCount, currentUser, onLogout }) {
   const [adding, setAdding] = useState(false)
+  const isClinician = currentUser?.role === 'clinician'
   const nav = [
     { id: 'timeline', label: 'Timeline', icon: History },
-    { id: 'upload', label: 'Upload records', icon: UploadCloud },
+    { id: 'upload', label: isClinician ? 'Records' : 'Upload records', icon: isClinician ? FileText : UploadCloud },
   ]
   return (
     <aside className="flex flex-col gap-5 bg-ink p-4 text-white md:h-full md:w-64 md:shrink-0 md:overflow-y-auto">
@@ -51,10 +52,14 @@ export default function Sidebar({ view, setView, patients, patientId, onSelectPa
             <option key={p.id} value={p.id} className="text-ink">{p.last_name}, {p.first_name}</option>
           ))}
         </select>
-        <button onClick={() => setAdding((v) => !v)} className="mt-2 flex items-center gap-1 text-sm text-emerald-300">
-          <UserPlus className="size-4" /> {adding ? 'Cancel' : 'New patient'}
-        </button>
-        {adding && <NewPatientForm onCreated={(id) => { onSelectPatient(id); setAdding(false) }} />}
+        {!isClinician && (
+          <>
+            <button onClick={() => setAdding((v) => !v)} className="mt-2 flex items-center gap-1 text-sm text-emerald-300">
+              <UserPlus className="size-4" /> {adding ? 'Cancel' : 'New patient'}
+            </button>
+            {adding && <NewPatientForm onCreated={(id) => { onSelectPatient(id); setAdding(false) }} />}
+          </>
+        )}
       </div>
 
       <nav className="flex gap-1 md:flex-col">
@@ -74,6 +79,13 @@ export default function Sidebar({ view, setView, patients, patientId, onSelectPa
           </button>
         ))}
       </nav>
+      <div className="mt-auto border-t border-white/15 pt-3">
+        <p className="truncate text-xs text-white/70">{currentUser?.email}</p>
+        <p className="mb-2 text-xs capitalize text-white/50">{currentUser?.role}</p>
+        <button onClick={onLogout} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-white/75 hover:bg-white/10">
+          <LogOut className="size-4" /> Sign out
+        </button>
+      </div>
     </aside>
   )
 }

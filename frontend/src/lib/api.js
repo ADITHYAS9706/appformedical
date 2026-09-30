@@ -6,6 +6,12 @@ export const api = axios.create({
   paramsSerializer: { indexes: null }, // event_type=a&event_type=b (FastAPI list format)
 })
 
+api.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem('accessToken')
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
 /** Human-readable message from a FastAPI/axios error. */
 export function errorMessage(err) {
   const detail = err?.response?.data?.detail
@@ -16,6 +22,7 @@ export function errorMessage(err) {
 }
 
 export const getPatients = () => api.get('/patients').then((r) => r.data)
+export const getCurrentUser = () => api.get('/auth/me').then((r) => r.data)
 export const createPatient = (body) => api.post('/patients', body).then((r) => r.data)
 
 /** POST /records/upload -> 202 with one record per file (processing continues server-side). */

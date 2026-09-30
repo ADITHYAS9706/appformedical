@@ -6,6 +6,9 @@ asyncpg>=0.29
 aiosqlite>=0.20
 pydantic-settings>=2.4
 python-multipart>=0.0.9
+email-validator>=2.0
+PyJWT>=2.8
+pwdlib[argon2]>=0.2
 
 # Intelligence layer
 langchain-core>=0.3
