@@ -51,6 +51,30 @@ export function useUploadRecords() {
   })
 }
 
+export function useDeleteRecord() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ recordId }) => api.deleteRecord(recordId),
+    onMutate: async ({ patientId, recordId }) => {
+      const queryKey = ['records', patientId]
+      await qc.cancelQueries({ queryKey })
+      const previousRecords = qc.getQueryData(queryKey)
+      qc.setQueryData(queryKey, (records) => records?.filter((record) => record.id !== recordId))
+      return { patientId, previousRecords }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousRecords) {
+        qc.setQueryData(['records', context.patientId], context.previousRecords)
+      }
+    },
+    onSettled: (_data, _error, { patientId }) => {
+      qc.invalidateQueries({ queryKey: ['records', patientId] })
+      qc.invalidateQueries({ queryKey: ['events', patientId] })
+      qc.invalidateQueries({ queryKey: ['summary', patientId] })
+    },
+  })
+}
+
 export const useEvents = (patientId, filters, enabled = true) =>
   useInfiniteQuery({
     queryKey: ['events', patientId, filters],

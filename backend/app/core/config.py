@@ -23,13 +23,16 @@ class Settings(BaseSettings):
     ocr_language: str = "eng"          # tesseract language(s), e.g. "eng+spa"
     ocr_dpi: int = 300                 # rasterization DPI for scanned PDF pages
     ocr_min_text_chars: int = 40       # below this, a PDF page is treated as scanned
+    ocr_page_segmentation_mode: int = 6
+    tesseract_cmd: str | None = None    # optional explicit path to tesseract.exe
     max_pages_per_file: int = 200
 
     # --- LLM extraction ---
-    llm_provider: Literal["anthropic", "openai"] = "anthropic"
-    llm_model: str = "claude-sonnet-5-5"   # e.g. "gpt-4o" when llm_provider="openai"
+    llm_provider: Literal["anthropic", "openai", "gemini"] = "anthropic"
+    llm_model: str = "claude-sonnet-5-5"   # e.g. "gpt-4o" when llm_provider="openai" or "gemini-2.5-flash" for Gemini
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
+    google_api_key: str | None = None
     llm_max_tokens: int = 4096
     llm_timeout_seconds: int = 120
     llm_max_retries: int = 3

@@ -33,6 +33,7 @@ export function uploadRecords({ patientId, files, onProgress }) {
 
 export const getRecords = (patientId) =>
   api.get('/records', { params: { patient_id: patientId, limit: 50 } }).then((r) => r.data)
+export const deleteRecord = (recordId) => api.delete(`/records/${recordId}`)
 
 /** GET /events -> { items, total, limit, offset } */
 export const getEvents = (params) => api.get('/events', { params }).then((r) => r.data)

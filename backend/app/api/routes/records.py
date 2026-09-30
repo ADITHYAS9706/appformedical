@@ -1,11 +1,17 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile, status
+import logging
+from pathlib import Path
+from uuid import UUID
+
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, Response, UploadFile, status
+from sqlalchemy import delete
 from sqlmodel import col, select
 
 from app.api.deps import SessionDep
 from app.core.config import settings
+from app.models.event import MedicalEvent
 from app.models.patient import Patient
 from app.models.record import MedicalRecord
 from app.schemas.record import RecordRead
@@ -13,6 +19,7 @@ from app.services.pipeline import process_record
 from app.services.storage import StoredFile, save_upload_temporarily
 
 router = APIRouter(prefix="/records", tags=["records"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/upload", response_model=list[RecordRead], status_code=status.HTTP_202_ACCEPTED)
@@ -84,3 +91,34 @@ async def get_record(record_id: UUID, session: SessionDep):
     if record is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found.")
     return record
+
+
+@router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_record(record_id: UUID, session: SessionDep) -> Response:
+    record = await session.get(MedicalRecord, record_id)
+    if record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found.")
+
+    storage_path = Path(record.storage_path)
+    await session.exec(delete(MedicalEvent).where(MedicalEvent.record_id == record_id))
+    await session.delete(record)
+    try:
+        await session.commit()
+    except Exception as exc:
+        await session.rollback()
+        logger.exception("Failed to delete medical record %s", record_id)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "Could not delete the medical record.",
+        ) from exc
+
+    try:
+        storage_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.exception("Record %s was deleted but its file could not be removed", record_id)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "The record and its timeline events were deleted, but its uploaded file could not be removed.",
+        ) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

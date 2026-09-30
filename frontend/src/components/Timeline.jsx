@@ -50,7 +50,7 @@ function EventRow({ ev, flashing }) {
   )
 }
 
-export default function Timeline({ patientId, activeCount }) {
+export default function Timeline({ patientId, activeCount, hasCompletedRecords }) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [flash, setFlash] = useState([])
   useEffect(() => setFilters(DEFAULT_FILTERS), [patientId])
@@ -93,7 +93,12 @@ export default function Timeline({ patientId, activeCount }) {
   } else if (events.isError) {
     body = <p role="alert" className="flex items-center gap-2 text-sm text-red-700"><AlertCircle className="size-4" />{errorMessage(events.error)}</p>
   } else if (items.length === 0) {
-    body = <Empty title="No events found" text={filtered ? 'Try removing a filter.' : 'Upload records to build this patient’s timeline.'} />
+    const text = filtered
+      ? 'Try removing a filter.'
+      : hasCompletedRecords
+        ? 'No dated events were extracted. Check that the processed records contain readable dates and medical event details.'
+        : 'Upload records to build this patient’s timeline.'
+    body = <Empty title="No events found" text={text} />
   } else {
     body = (
       <>

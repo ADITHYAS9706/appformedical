@@ -56,11 +56,15 @@ export default function App() {
                     : 'PDFs and images are read and organized automatically.'}
                 </p>
                 {view === 'timeline' ? (
-                  <Timeline patientId={patient.id} activeCount={activeCount} />
+                  <Timeline
+                    patientId={patient.id}
+                    activeCount={activeCount}
+                    hasCompletedRecords={records.data?.some((record) => record.status === 'completed') ?? false}
+                  />
                 ) : (
                   <div className="space-y-8">
                     <UploadDropzone patientId={patient.id} />
-                    <ProcessingQueue records={records.data} isLoading={records.isLoading} />
+                    <ProcessingQueue patientId={patient.id} records={records.data} isLoading={records.isLoading} />
                   </div>
                 )}
               </>
