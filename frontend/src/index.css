@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
+  --color-ink: #16233a;
+  --color-paper: #f5f7f9;
+  --color-line: #d5dce4;
+  --color-brand: #0e6b5c;
+}
+
+body { @apply bg-paper font-sans text-ink antialiased; }
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
